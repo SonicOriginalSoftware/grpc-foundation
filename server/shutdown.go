@@ -3,10 +3,9 @@ package server
 import (
 	"context"
 	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
+
+	"git.sonicoriginal.software/grpc-foundation/lifecycle"
 )
 
 // GracefulStopper stops a gRPC server once its in-flight requests finish
@@ -14,41 +13,33 @@ type GracefulStopper interface {
 	GracefulStop()
 }
 
-// HandleGracefulShutdown waits for shutdown signals and orchestrates cleanup.
-// It blocks until either an OS signal (SIGINT/SIGTERM) is received or the context is cancelled.
-// The shutdown sequence is:
-//  1. Cancel the context to stop background goroutines
-//  2. Gracefully stop the gRPC server
+// HandleGracefulShutdown stops the gRPC server and then flushes the telemetry
+// providers, both against one deadline built from cleanupTimeout. Whatever
+// stopping the server spends, the flush does not get.
 //
-// OTel provider shutdown is handled by the caller via defer.
+// The flush runs second because the requests that drain during GracefulStop
+// produce the spans and logs it exports.
+//
+// Callers defer it, so it runs on every path out of main: a listener that fails
+// to bind flushes the error explaining that failure the same way a signal
+// flushes the requests that drained.
+//
+// ctx is the process context. Passing the context that was cancelled to trigger
+// the shutdown leaves nothing for the deadline to be built on and the flush
+// exports nothing.
 func HandleGracefulShutdown(
 	ctx context.Context,
-	cancel context.CancelFunc,
 	log *slog.Logger,
 	grpcServer GracefulStopper,
+	flush lifecycle.ShutdownFunc,
 	cleanupTimeout time.Duration,
 ) {
 	shutdownLog := log.With(slog.String("component", "shutdown-handler"))
-	shutdownLog.Info("Awaiting shutdown signal")
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Wait for either OS signal or context cancellation
-	select {
-	case <-sigChan:
-		shutdownLog.Info("Shutdown signal received")
-	case <-ctx.Done():
-		shutdownLog.Info("Context cancelled")
-	}
 	shutdownLog.Info("Initiating graceful shutdown")
 
-	// 1. Cancel context to stop background goroutines (grpcd poller)
-	shutdownLog.Info("Cancelling background context")
-	cancel()
-	shutdownLog.Info("Background context cancelled")
+	shutdownCtx, cancel := context.WithTimeout(ctx, cleanupTimeout)
+	defer cancel()
 
-	// 2. Stop gRPC server (stop accepting new requests, finish in-flight)
 	shutdownLog.Info("Stopping gRPC server")
 
 	stopped := make(chan struct{})
@@ -60,8 +51,17 @@ func HandleGracefulShutdown(
 	select {
 	case <-stopped:
 		shutdownLog.Info("gRPC server stopped")
-	case <-time.After(cleanupTimeout):
+	case <-shutdownCtx.Done():
 		shutdownLog.Warn("Timed out waiting for in-flight requests",
 			slog.Duration("timeout", cleanupTimeout))
 	}
+
+	shutdownLog.Info("Flushing telemetry")
+
+	if err := flush(shutdownCtx); err != nil {
+		shutdownLog.Warn("Telemetry flush incomplete", slog.Any("error", err))
+		return
+	}
+
+	shutdownLog.Info("Telemetry flushed")
 }

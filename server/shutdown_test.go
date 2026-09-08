@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log/slog"
-	"os"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -29,18 +28,19 @@ type blockingStopperStub struct {
 
 func (s *blockingStopperStub) GracefulStop() { <-s.release }
 
-// cancelStub records that the handler cancelled the background context. It is
-// safe to read called once the stopper has fired, because the handler cancels
-// before it stops the server.
-type cancelStub struct {
-	cancel context.CancelFunc
+// flushStub records the context the handler flushed with, so a test can assert
+// on what the providers would have been given.
+type flushStub struct {
 	called bool
+	err    error
+	ctxErr error
 }
 
-func (c *cancelStub) Cancel() {
-	c.called = true
+func (f *flushStub) Flush(ctx context.Context) error {
+	f.called = true
+	f.ctxErr = ctx.Err()
 
-	c.cancel()
+	return f.err
 }
 
 // await fails the test if signal does not fire. The ceiling turns a handler
@@ -56,72 +56,62 @@ func await(t *testing.T, signal <-chan struct{}, message string) {
 }
 
 func TestHandleGracefulShutdown(t *testing.T) {
-	t.Run("stops the server on context cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
+	t.Run("stops the server then flushes with a live context", func(t *testing.T) {
 		stopper := newStopperStub()
+		flush := &flushStub{}
 
-		go HandleGracefulShutdown(ctx, cancel, slog.New(slog.DiscardHandler), stopper, 5*time.Second)
-
-		cancel()
-
-		await(t, stopper.stopped, "server was not stopped")
-	})
-
-	t.Run("cancels the background context before stopping", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		stopper := newStopperStub()
-		tracked := &cancelStub{cancel: cancel}
-
-		go HandleGracefulShutdown(ctx, tracked.Cancel, slog.New(slog.DiscardHandler), stopper, 5*time.Second)
-
-		cancel()
+		HandleGracefulShutdown(
+			t.Context(), slog.New(slog.DiscardHandler), stopper, flush.Flush, 5*time.Second,
+		)
 
 		await(t, stopper.stopped, "server was not stopped")
 
-		if !tracked.called {
-			t.Fatal("cancel function should have been called")
+		if !flush.called {
+			t.Fatal("telemetry was not flushed")
+		}
+
+		if flush.ctxErr != nil {
+			t.Fatalf("flush context should still be live, got %v", flush.ctxErr)
 		}
 	})
 
-	t.Run("returns when in-flight requests do not finish in time", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
+	t.Run("flushes when in-flight requests do not finish in time", func(t *testing.T) {
 		stopper := &blockingStopperStub{release: make(chan struct{})}
 		defer close(stopper.release)
+
+		flush := &flushStub{}
 
 		returned := make(chan struct{})
 		go func() {
 			HandleGracefulShutdown(
-				ctx, cancel, slog.New(slog.DiscardHandler), stopper, time.Millisecond,
+				t.Context(), slog.New(slog.DiscardHandler), stopper, flush.Flush, time.Millisecond,
 			)
 			close(returned)
 		}()
 
-		cancel()
-
 		await(t, returned, "handler did not stop waiting for the server")
+
+		if !flush.called {
+			t.Fatal("telemetry was not flushed after the server timed out")
+		}
+
+		if !errors.Is(flush.ctxErr, context.DeadlineExceeded) {
+			t.Fatalf("flush context should have been spent, got %v", flush.ctxErr)
+		}
 	})
 
-	t.Run("stops the server on OS signal", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-
+	t.Run("returns when the flush fails", func(t *testing.T) {
 		stopper := newStopperStub()
+		flush := &flushStub{err: errors.New("collector unreachable")}
 
-		go HandleGracefulShutdown(ctx, cancel, slog.New(slog.DiscardHandler), stopper, 5*time.Second)
-
-		// The handler has to reach signal.Notify before the signal is sent, or
-		// SIGTERM ends the test process instead. Nothing observable marks that
-		// point, so the wait is a sleep.
-		time.Sleep(50 * time.Millisecond)
-
-		proc, err := os.FindProcess(os.Getpid())
-		if err != nil {
-			t.Fatalf("unexpected error finding process: %v", err)
-		}
-		if err := proc.Signal(syscall.SIGTERM); err != nil {
-			t.Fatalf("unexpected error sending signal: %v", err)
-		}
+		HandleGracefulShutdown(
+			t.Context(), slog.New(slog.DiscardHandler), stopper, flush.Flush, 5*time.Second,
+		)
 
 		await(t, stopper.stopped, "server was not stopped")
+
+		if !flush.called {
+			t.Fatal("telemetry was not flushed")
+		}
 	})
 }
