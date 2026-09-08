@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.10.1 - 2026-09-08
+#### Bug Fixes
+- make HandleGracefulShutdown a deferrable function - (f260dd3) - Nathan Blair
+
+- - -
+
 ## 0.10.0 - 2026-08-29
 #### Features
 - include trace and span IDs in log messages - (ddef45d) - Nathan Blair
