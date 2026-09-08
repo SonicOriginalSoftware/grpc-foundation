@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.10.2 - 2026-09-08
+#### Bug Fixes
+- auth responsibilities are moved out - (3ff3a9f) - Nathan Blair
+
+- - -
+
 ## 0.10.1 - 2026-09-08
 #### Bug Fixes
 - make HandleGracefulShutdown a deferrable function - (f260dd3) - Nathan Blair
