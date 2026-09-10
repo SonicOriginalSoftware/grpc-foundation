@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.10.3 - 2026-09-10
+#### Bug Fixes
+- otel sdk errors get consistently formatted and kept to stdout - (c92b739) - Nathan Blair
+
+- - -
+
 ## 0.10.2 - 2026-09-08
 #### Bug Fixes
 - auth responsibilities are moved out - (3ff3a9f) - Nathan Blair
