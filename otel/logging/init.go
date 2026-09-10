@@ -16,6 +16,7 @@ import (
 	"git.sonicoriginal.software/logger/handlers/tee"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -41,7 +42,7 @@ var DefaultAttributeLevels = [][]string{
 //   - "" or "none": no OTel log provider
 //
 // LOG_FORMAT controls the stdout bridge:
-//   - "none": OTel only, no stdout output (production)
+//   - "none": OTel only; stdout carries OTel SDK errors and nothing else
 //   - "json": tee to stdout in JSON format
 //   - "text" or "flat": tee to stdout in flat text format
 //   - default (including "structured" or empty): tee to stdout in structured format
@@ -78,25 +79,31 @@ func Init(
 	otelHandler := otelslog.NewHandler(serviceName)
 	serviceAttr := slog.String("service", serviceName)
 
+	format := strings.ToLower(os.Getenv("LOG_FORMAT"))
+
 	var stdoutHandler slog.Handler
-	switch strings.ToLower(os.Getenv("LOG_FORMAT")) {
+	switch format {
 	case "json":
 		stdoutHandler = json.NewHandler()
 	case "text", "flat":
 		stdoutHandler = flat.NewHandler()
-	case "none":
-		otelLogger := slog.New(otelHandler)
-		logger := otelLogger.With(serviceAttr)
-		return logger, shutdown, nil
-	default: // "structured" or empty
+	default: // "structured", "none" or empty
 		stdoutHandler = structured.NewHandler(&structured.Options{
 			AttributeLevels: DefaultAttributeLevels,
 		})
 	}
 
-	teeHandler := tee.NewHandler(otelHandler, stdoutHandler)
-	teeLogger := slog.New(teeHandler)
-	logger := teeLogger.With(serviceAttr)
+	// SDK errors go to stdout alone. An export failure reported through the
+	// exporter that is failing cannot be delivered, and every attempt creates
+	// another record that fails the same way.
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		slog.New(stdoutHandler).With(serviceAttr).Error("otel sdk", "error", err)
+	}))
 
-	return logger, shutdown, nil
+	handler := slog.Handler(otelHandler)
+	if format != "none" {
+		handler = tee.NewHandler(otelHandler, stdoutHandler)
+	}
+
+	return slog.New(handler).With(serviceAttr), shutdown, nil
 }
