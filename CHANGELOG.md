@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.11.0 - 2026-09-12
+#### Features
+- add service name manipulation from methods - (2a80feb) - Nathan Blair
+
+- - -
+
 ## 0.10.4 - 2026-09-12
 #### Bug Fixes
 - allow configuring the keepalive time for client and server - (22db400) - Nathan Blair
