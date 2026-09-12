@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## 0.10.4 - 2026-09-12
+#### Bug Fixes
+- allow configuring the keepalive time for client and server - (22db400) - Nathan Blair
+
+- - -
+
 ## 0.10.3 - 2026-09-10
 #### Bug Fixes
 - otel sdk errors get consistently formatted and kept to stdout - (c92b739) - Nathan Blair
