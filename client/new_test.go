@@ -5,10 +5,28 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+
+	"git.sonicoriginal.software/grpc-foundation/config"
 )
 
 func TestNew(t *testing.T) {
 	t.Run("creates client with minimal options", func(t *testing.T) {
+		conn, err := New("localhost:50051", nil, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if conn == nil {
+			t.Fatal("expected conn to be non-nil")
+		}
+		if err := conn.Close(); err != nil {
+			t.Errorf("unexpected error closing conn: %v", err)
+		}
+	})
+
+	t.Run("reads keepalive settings from environment", func(t *testing.T) {
+		t.Setenv(config.EnvKeepAliveTime, "4m")
+		t.Setenv(config.EnvKeepAliveTimeout, "5s")
+
 		conn, err := New("localhost:50051", nil, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

@@ -7,6 +7,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"git.sonicoriginal.software/grpc-foundation/config"
 )
 
 func TestNew(t *testing.T) {
@@ -39,8 +41,8 @@ func TestNew(t *testing.T) {
 		t.Setenv(EnvMaxConnectionIdle, "1m")
 		t.Setenv(EnvMaxConnectionAge, "2m")
 		t.Setenv(EnvMaxConnectionAgeGrace, "3s")
-		t.Setenv(EnvKeepAliveTime, "4m")
-		t.Setenv(EnvKeepAliveTimeout, "5s")
+		t.Setenv(config.EnvKeepAliveTime, "4m")
+		t.Setenv(config.EnvKeepAliveTimeout, "5s")
 		t.Setenv(EnvMaxRecvMsgSize, "1024")
 		t.Setenv(EnvMaxSendMsgSize, "2048")
 

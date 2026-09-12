@@ -5,6 +5,9 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
+
+	"git.sonicoriginal.software/grpc-foundation/config"
 )
 
 // New creates a gRPC client connection with standardized options.
@@ -12,6 +15,9 @@ import (
 // Standard options include:
 //   - Insecure credentials (for internal service mesh communication)
 //   - OpenTelemetry trace propagation (automatic distributed tracing)
+//   - Keepalive pings, read from GRPC_KEEPALIVE_TIME and GRPC_KEEPALIVE_TIMEOUT,
+//     sent whether or not an RPC is active so a peer that went silent is
+//     noticed on a held connection and not only on the next call
 //
 // Additional options can be passed to customize the connection:
 //
@@ -36,6 +42,11 @@ func New(
 	standardOpts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                config.KeepAliveTime(),
+			Timeout:             config.KeepAliveTimeout(),
+			PermitWithoutStream: true,
+		}),
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	}

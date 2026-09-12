@@ -6,6 +6,8 @@ import (
 
 	"git.sonicoriginal.software/logger"
 
+	"git.sonicoriginal.software/grpc-foundation/config"
+
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -37,19 +39,19 @@ func New(log *slog.Logger, opts ...grpc.ServerOption) *grpc.Server {
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 		// Connection management
 		grpc.KeepaliveParams(keepalive.ServerParameters{
-			MaxConnectionIdle:     getEnvDurationOrDefault(EnvMaxConnectionIdle, DefaultMaxConnectionIdle),
-			MaxConnectionAge:      getEnvDurationOrDefault(EnvMaxConnectionAge, DefaultMaxConnectionAge),
-			MaxConnectionAgeGrace: getEnvDurationOrDefault(EnvMaxConnectionAgeGrace, DefaultMaxConnectionAgeGrace),
-			Time:                  getEnvDurationOrDefault(EnvKeepAliveTime, DefaultKeepAliveTime),
-			Timeout:               getEnvDurationOrDefault(EnvKeepAliveTimeout, DefaultKeepAliveTimeout),
+			MaxConnectionIdle:     config.DurationOrDefault(EnvMaxConnectionIdle, DefaultMaxConnectionIdle),
+			MaxConnectionAge:      config.DurationOrDefault(EnvMaxConnectionAge, DefaultMaxConnectionAge),
+			MaxConnectionAgeGrace: config.DurationOrDefault(EnvMaxConnectionAgeGrace, DefaultMaxConnectionAgeGrace),
+			Time:                  config.KeepAliveTime(),
+			Timeout:               config.KeepAliveTimeout(),
 		}),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
 			MinTime:             1 * time.Minute,
 			PermitWithoutStream: true,
 		}),
 		// Message size limits
-		grpc.MaxRecvMsgSize(getEnvIntOrDefault(EnvMaxRecvMsgSize, DefaultMaxRecvMsgSize)),
-		grpc.MaxSendMsgSize(getEnvIntOrDefault(EnvMaxSendMsgSize, DefaultMaxSendMsgSize)),
+		grpc.MaxRecvMsgSize(config.IntOrDefault(EnvMaxRecvMsgSize, DefaultMaxRecvMsgSize)),
+		grpc.MaxSendMsgSize(config.IntOrDefault(EnvMaxSendMsgSize, DefaultMaxSendMsgSize)),
 	}
 
 	// Append custom options (can override standard options if needed)
